@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <title>You've successfully authenticated</title>
+    <style>
+        button { margin: 8px 0; }
+        pre { background: #f4f4f4; padding: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Welcome!</h1>
+    <p>You have successfully authenticated with the John Deere API.</p>
+
+    <button onclick="callApi('/organizations')">Get Organizations</button>
+    <button onclick="callApi('/fields')">Get Fields</button>
+    <button onclick="callApi('/field-operations')">Get Field Operations</button>
+
+    <h2>Result:</h2>
+    <pre id="result"></pre>
+
+    <script>
+        async function callApi(endpoint) {
+            document.getElementById('result').textContent = 'Loading...';
+            try {
+                const res = await fetch(endpoint);
+                const data = await res.json();
+                document.getElementById('result').textContent = JSON.stringify(data, null, 2);
+            } catch (err) {
+                document.getElementById('result').textContent = 'Error: ' + err;
+            }
+        }
+    </script>
+</body>
+</html>

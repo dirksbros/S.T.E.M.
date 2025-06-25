@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: fastapi-jd-app
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port 10000
+    envVars:
+      - key: JD_CLIENT_ID
+        sync: false
+      - key: JD_CLIENT_SECRET
+        sync: false
+      - key: JD_REDIRECT_URI
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_PHONE_NUMBER
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
