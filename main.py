@@ -296,22 +296,29 @@ async def subscribe_to_field_ops():
     if not access_token:
         return JSONResponse({"error": "Not authenticated"}, status_code=401)
 
-    webhook_url = "https://your-render-app-name.onrender.com/webhook"  # Replace with your actual webhook URL
-    secret_token = "Bearer your-secret-token"  # Replace with your secret token or remove if none
+    org_id = "595239"  # Replace with your actual organization ID
+    webhook_url = "https://your-render-app-name.onrender.com/webhook"  # Replace with your actual webhook
+    secret_token = "wVaS=dWgjKTyCg=g3RbDj0V51MWg+ges9SVvpgIYlbOO2aqBqtSuivWonJY31vrSzf"  # Secure this properly
 
+    # JD v3 Event Subscription format
     data = {
-        "subscriptionContent": {
-            "eventTypes": ["fieldOperation.completed"],
-            "destination": {
-                "url": webhook_url,
-                "headers": [
-                    {
-                        "name": "Authorization",
-                        "value": secret_token
-                    }
-                ]
+        "eventTypeId": "fieldOperation",
+        "filters": [
+            {
+                "key": "orgId",
+                "values": [org_id]
+            },
+            {
+                "key": "fieldOperationType",
+                "values": ["application"]  # or "seeding", "harvest", etc.
             }
-        }
+        ],
+        "targetEndpoint": {
+            "targetType": "https",
+            "uri": webhook_url
+        },
+        "displayName": "Field Operation Completed Subscription",
+        "token": secret_token
     }
 
     headers = {
