@@ -308,34 +308,27 @@ async def webhook_listener(request: Request):
     except Exception as e:
         print("Webhook error:", str(e))
         return JSONResponse({"error": str(e)}, status_code=400)
-
 @app.post("/subscribe")
 async def subscribe_to_field_ops():
     access_token = await get_valid_access_token()
     if not access_token:
         return JSONResponse({"error": "Not authenticated"}, status_code=401)
 
-    org_id = os.getenv("ORG_ID")
-    if not org_id:
-        return JSONResponse({"error": "ORG_ID not set"}, status_code=400)
+    webhook_url = "https://your-render-app-name.onrender.com/webhook"  # Replace with your actual webhook
+    secret_token = "Bearer your-secret-token"  # Replace with your secure auth token
 
-    webhook_url = "https://your-render-app-name.onrender.com/webhook"  # Replace with actual Render URL
-    secret_token = "your-secret-token"  # Replace with your actual secret token
-
+    # JD v3 API expects this format
     data = {
-        "eventTypeId": "fieldOperation",
-        "filters": [
-            { "key": "orgId", "values": [org_id] },
-            { "key": "fieldOperationType", "values": ["seeding"] },
-            { "key": "cropSeason", "values": ["2025"] }
-        ],
-        "targetEndpoint": {
-            "targetType": "https",
-            "uri": webhook_url
-        },
-        "status": "Active",
-        "displayName": f"Org {org_id} Seeding Field Ops Subscription",
-        "token": secret_token
+        "eventType": "fieldOperation.completed",  # Exact event type
+        "destination": {
+            "url": webhook_url,
+            "headers": [
+                {
+                    "name": "Authorization",
+                    "value": secret_token
+                }
+            ]
+        }
     }
 
     headers = {
@@ -349,7 +342,6 @@ async def subscribe_to_field_ops():
     async with httpx.AsyncClient() as client:
         response = await client.post(url, json=data, headers=headers)
 
-    # Print everything for debug
     print("\n=== JD Subscription Request Debug ===")
     print("URL:", url)
     print("Request Headers:", headers)
