@@ -274,7 +274,7 @@ async def get_field_operations():
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 
-@app.post("/webhook")
+@app.get("/webhook")
 async def webhook_listener(request: Request):
     try:
         events = await request.json()
