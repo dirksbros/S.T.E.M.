@@ -297,7 +297,7 @@ async def subscribe_to_field_ops():
         return JSONResponse({"error": "Not authenticated"}, status_code=401)
 
     org_id = "595239"  # Replace with your actual organization ID
-    webhook_url = "https://your-render-app-name.onrender.com/webhook"  # Replace with your actual webhook
+    webhook_url = "https://s-t-e-m.onrender.com/webhook"  # Replace with your actual webhook
     secret_token = "wVaS=dWgjKTyCg=g3RbDj0V51MWg+ges9SVvpgIYlbOO2aqBqtSuivWonJY31vrSzf"  # Secure this properly
 
     # JD v3 Event Subscription format
