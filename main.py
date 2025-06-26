@@ -309,7 +309,7 @@ async def webhook_listener(request: Request):
         print("Webhook error:", str(e))
         return JSONResponse({"error": str(e)}, status_code=400)
 
-@app.get("/subscribe")
+@app.post("/subscribe")
 async def subscribe_to_field_ops():
     access_token = await get_valid_access_token()
     if not access_token:
@@ -319,14 +319,23 @@ async def subscribe_to_field_ops():
     if not org_id:
         return JSONResponse({"error": "ORG_ID not set"}, status_code=400)
 
-    # Use your actual Render domain here:
-    webhook_url = f"https://your-render-app-name.onrender.com/webhook"
+    webhook_url = "https://your-render-app-name.onrender.com/webhook"  # Replace with actual Render URL
+    secret_token = "your-secret-token"  # Replace with your actual secret token
 
     data = {
-        "eventTypes": ["FieldOperationFinished"],
-        "callbackUrl": webhook_url,
-        "format": "JSON",
-        "secret": "optional-secret-here"  # optional
+        "eventTypeId": "fieldOperation",
+        "filters": [
+            { "key": "orgId", "values": [org_id] },
+            { "key": "fieldOperationType", "values": ["seeding"] },
+            { "key": "cropSeason", "values": ["2025"] }
+        ],
+        "targetEndpoint": {
+            "targetType": "https",
+            "uri": webhook_url
+        },
+        "status": "Active",
+        "displayName": f"Org {org_id} Seeding Field Ops Subscription",
+        "token": secret_token
     }
 
     headers = {
@@ -335,14 +344,26 @@ async def subscribe_to_field_ops():
         "Content-Type": "application/vnd.deere.axiom.v3+json"
     }
 
-    url = f"https://sandboxapi.deere.com/platform/organizations/{org_id}/subscriptions"
+    url = "https://sandboxapi.deere.com/platform/eventSubscriptions"
 
     async with httpx.AsyncClient() as client:
         response = await client.post(url, json=data, headers=headers)
 
-    print("JD subscription response:", response.status_code, response.text)
+    # Print everything for debug
+    print("\n=== JD Subscription Request Debug ===")
+    print("URL:", url)
+    print("Request Headers:", headers)
+    print("Request Body:", data)
+    print("Response Status Code:", response.status_code)
+    print("Response Headers:", response.headers)
+    print("Response Text:", response.text)
+    print("=====================================\n")
 
     if response.status_code != 201:
-        return JSONResponse({"error": "Failed to subscribe", "detail": response.text}, status_code=response.status_code)
+        return JSONResponse({
+            "error": "Failed to subscribe",
+            "status_code": response.status_code,
+            "text": response.text
+        }, status_code=response.status_code)
 
     return {"message": "Successfully subscribed to JD events"}
