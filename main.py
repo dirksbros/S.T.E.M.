@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from fastapi import Request, Response
 import httpx
 from datetime import datetime, timedelta
@@ -279,19 +280,24 @@ from fastapi.responses import JSONResponse
 async def webhook_listener(request: Request):
     try:
         events = await request.json()
-        print("📩 Webhook received:", events)
+        print("📩 JD Webhook Events:", events)
 
         for event in events:
             event_type = event.get("eventType")
             resource = event.get("resource")
-            message = f"JD Event: {event_type}\nResource: {resource}"
-            send_sms(message)
 
+            print("📝 Event type:", event_type)
+            print("📍 Resource:", resource)
+
+            # Your custom logic
+            # send_sms(f"{event_type} happened on {resource}")
+
+        # JD requires a 204 response — not JSON
         return Response(status_code=204)
-    except Exception as e:
-        print("Webhook error:", str(e))
-        return JSONResponse({"error": str(e)}, status_code=400)
 
+    except Exception as e:
+        print("❌ Webhook error:", str(e))
+        return JSONResponse({"error": str(e)}, status_code=400)
 
 
 @app.post("/subscribe")
