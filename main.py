@@ -290,44 +290,27 @@ async def webhook_listener(request: Request):
         print("Webhook error:", str(e))
         return JSONResponse({"error": str(e)}, status_code=400)
 
-@app.post("/webhook")
-async def webhook_listener(request: Request):
-    try:
-        payload = await request.json()
-        print("📩 Webhook received:", payload)
-
-        # Example: Get type of event
-        event_type = payload.get("eventType")
-        resource = payload.get("resource")
-
-        # Optional: Trigger action based on eventType/resource
-        message = f"JD Event: {event_type}\nResource: {resource}"
-        sms_result = send_sms(message)
-
-        return {"status": "received", "sms": sms_result}
-    except Exception as e:
-        print("Webhook error:", str(e))
-        return JSONResponse({"error": str(e)}, status_code=400)
 @app.post("/subscribe")
 async def subscribe_to_field_ops():
     access_token = await get_valid_access_token()
     if not access_token:
         return JSONResponse({"error": "Not authenticated"}, status_code=401)
 
-    webhook_url = "https://your-render-app-name.onrender.com/webhook"  # Replace with your actual webhook
-    secret_token = "Bearer your-secret-token"  # Replace with your secure auth token
+    webhook_url = "https://your-render-app-name.onrender.com/webhook"  # Replace with your actual webhook URL
+    secret_token = "Bearer your-secret-token"  # Replace with your secret token or remove if none
 
-    # JD v3 API expects this format
     data = {
-        "eventType": "fieldOperation.completed",  # Exact event type
-        "destination": {
-            "url": webhook_url,
-            "headers": [
-                {
-                    "name": "Authorization",
-                    "value": secret_token
-                }
-            ]
+        "subscriptionContent": {
+            "eventTypes": ["fieldOperation.completed"],
+            "destination": {
+                "url": webhook_url,
+                "headers": [
+                    {
+                        "name": "Authorization",
+                        "value": secret_token
+                    }
+                ]
+            }
         }
     }
 
