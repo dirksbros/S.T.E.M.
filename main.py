@@ -279,25 +279,24 @@ from fastapi.responses import JSONResponse
 @app.post("/webhook")
 async def webhook_listener(request: Request):
     try:
-        events = await request.json()
-        print("📩 JD Webhook Events:", events)
+        payload = await request.json()
+        print("📩 JD Webhook Events:", payload)
 
-        for event in events:
-            event_type = event.get("eventType")
-            resource = event.get("resource")
+        for event in payload:
+            event_type = event.get("eventTypeId")
+            resource = event.get("targetResource")
 
-            print("📝 Event type:", event_type)
-            print("📍 Resource:", resource)
+            print(f"📝 Event type: {event_type}")
+            print(f"📍 Resource: {resource}")
 
-            # Your custom logic
-            # send_sms(f"{event_type} happened on {resource}")
+            message = f"JD Event: {event_type}\nResource: {resource}"
+            send_sms(message)  # or await if async
 
-        # JD requires a 204 response — not JSON
         return Response(status_code=204)
-
     except Exception as e:
-        print("❌ Webhook error:", str(e))
+        print("Webhook error:", str(e))
         return JSONResponse({"error": str(e)}, status_code=400)
+
 
 
 @app.post("/subscribe")
