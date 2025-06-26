@@ -277,27 +277,20 @@ from fastapi.responses import JSONResponse
 @app.post("/webhook")
 async def webhook_listener(request: Request):
     try:
-        # Check Authorization header (optional but recommended)
-        auth_header = request.headers.get("Authorization")
-        expected_token = "wVaS=dWgjKTyCg=g3RbDj0V51MWg+ges9SVvpgIYlbOO2aqBqtSuivWonJY31vrSzf"
-        if auth_header != expected_token:
-            return Response(status_code=403)
-
-        # Parse incoming JSON payload
         events = await request.json()
         print("📩 Webhook received:", events)
 
-        # Process each event
         for event in events:
             event_type = event.get("eventType")
             resource = event.get("resource")
             message = f"JD Event: {event_type}\nResource: {resource}"
-            send_sms(message)  # Replace with your logic
+            send_sms(message)
 
-        return Response(status_code=204)  # Per JD spec: NO CONTENT
+        return Response(status_code=204)
     except Exception as e:
         print("Webhook error:", str(e))
         return JSONResponse({"error": str(e)}, status_code=400)
+
 
 
 @app.post("/subscribe")
