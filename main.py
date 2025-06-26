@@ -290,7 +290,26 @@ async def webhook_listener(request: Request):
         print("Webhook error:", str(e))
         return JSONResponse({"error": str(e)}, status_code=400)
 
-@app.post("/subscribe")
+@app.post("/webhook")
+async def webhook_listener(request: Request):
+    try:
+        payload = await request.json()
+        print("📩 Webhook received:", payload)
+
+        # Example: Get type of event
+        event_type = payload.get("eventType")
+        resource = payload.get("resource")
+
+        # Optional: Trigger action based on eventType/resource
+        message = f"JD Event: {event_type}\nResource: {resource}"
+        sms_result = send_sms(message)
+
+        return {"status": "received", "sms": sms_result}
+    except Exception as e:
+        print("Webhook error:", str(e))
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+@app.get("/subscribe")
 async def subscribe_to_field_ops():
     access_token = await get_valid_access_token()
     if not access_token:
@@ -324,6 +343,6 @@ async def subscribe_to_field_ops():
     print("JD subscription response:", response.status_code, response.text)
 
     if response.status_code != 201:
-        return JSONResponse({"error": "Failed to subscribe", "details": response.text}, status_code=response.status_code)
+        return JSONResponse({"error": "Failed to subscribe", "detail": response.text}, status_code=response.status_code)
 
     return {"message": "Successfully subscribed to JD events"}
