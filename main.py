@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi import Request, Response
 import httpx
 from datetime import datetime, timedelta
 import os
@@ -274,7 +275,7 @@ async def get_field_operations():
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 
-@app.get("/webhook")
+@app.post("/webhook")
 async def webhook_listener(request: Request):
     try:
         events = await request.json()
