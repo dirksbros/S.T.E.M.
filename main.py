@@ -271,24 +271,34 @@ async def get_field_operations():
 
     return {"field_operations": limited_ops}
 
+from fastapi import Request, Response
+from fastapi.responses import JSONResponse
+
 @app.post("/webhook")
 async def webhook_listener(request: Request):
     try:
-        payload = await request.json()
-        print("📩 Webhook received:", payload)
+        # Check Authorization header (optional but recommended)
+        auth_header = request.headers.get("Authorization")
+        expected_token = "wVaS=dWgjKTyCg=g3RbDj0V51MWg+ges9SVvpgIYlbOO2aqBqtSuivWonJY31vrSzf"
+        if auth_header != expected_token:
+            return Response(status_code=403)
 
-        # Example: Get type of event
-        event_type = payload.get("eventType")
-        resource = payload.get("resource")
+        # Parse incoming JSON payload
+        events = await request.json()
+        print("📩 Webhook received:", events)
 
-        # Optional: Trigger action based on eventType/resource
-        message = f"JD Event: {event_type}\nResource: {resource}"
-        sms_result = send_sms(message)
+        # Process each event
+        for event in events:
+            event_type = event.get("eventType")
+            resource = event.get("resource")
+            message = f"JD Event: {event_type}\nResource: {resource}"
+            send_sms(message)  # Replace with your logic
 
-        return {"status": "received", "sms": sms_result}
+        return Response(status_code=204)  # Per JD spec: NO CONTENT
     except Exception as e:
         print("Webhook error:", str(e))
         return JSONResponse({"error": str(e)}, status_code=400)
+
 
 @app.post("/subscribe")
 async def subscribe_to_field_ops():
