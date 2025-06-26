@@ -305,18 +305,23 @@ async def subscribe_to_field_ops():
     if not access_token:
         return JSONResponse({"error": "Not authenticated"}, status_code=401)
 
-    org_id = "595239"  # Replace with your actual organization ID
-    webhook_url = "https://s-t-e-m.onrender.com/webhook"  # Replace with your actual webhook
-    secret_token = "wVaS=dWgjKTyCg=g3RbDj0V51MWg+ges9SVvpgIYlbOO2aqBqtSuivWonJY31vrSzf"  # Secure this properly
+    org_id = "595239"  # Required filter
+    webhook_url = "https://s-t-e-m.onrender.com/webhook"
+    secret_token = "wVaS=dWgjKTyCg=g3RbDj0V51MWg+ges9SVvpgIYlbOO2aqBqtSuivWonJY31vrSzf"
 
-    # JD v3 Event Subscription format
     data = {
         "eventTypeId": "fieldOperation",
+        "filters": [
+            {
+                "key": "orgId",
+                "values": [org_id]
+            }
+        ],
         "targetEndpoint": {
             "targetType": "https",
             "uri": webhook_url
         },
-        "displayName": "Field Operation Completed Subscription",
+        "displayName": "Field Operation Subscription (All Types)",
         "token": secret_token
     }
 
@@ -347,4 +352,4 @@ async def subscribe_to_field_ops():
             "text": response.text
         }, status_code=response.status_code)
 
-    return {"message": "Successfully subscribed to JD events"}
+    return {"message": "Successfully subscribed to JD field operations"}
