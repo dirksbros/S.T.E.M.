@@ -312,16 +312,6 @@ async def subscribe_to_field_ops():
     # JD v3 Event Subscription format
     data = {
         "eventTypeId": "fieldOperation",
-        "filters": [
-            {
-                "key": "orgId",
-                "values": [org_id]
-            },
-            {
-                "key": "fieldOperationType",
-                "values": ["application"]  # or "seeding", "harvest", etc.
-            }
-        ],
         "targetEndpoint": {
             "targetType": "https",
             "uri": webhook_url
