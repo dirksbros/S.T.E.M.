@@ -1,7 +1,6 @@
 from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.responses import RedirectResponse, JSONResponse
-from fastapi.responses import JSONResponse
-from fastapi import Request, Response
 import httpx
 from datetime import datetime, timedelta
 import os
@@ -136,7 +135,7 @@ async def get_organizations():
 
     url = "https://sandboxapi.deere.com/platform/organizations"
     headers = {
-        "Authorization": "Bearer {access_token}",
+        "Authorization": f"Bearer {access_token}",
         "Accept": "application/vnd.deere.axiom.v3+json"
     }
 
@@ -282,20 +281,52 @@ async def webhook_listener(request: Request):
         payload = await request.json()
         print("📩 JD Webhook Events:", payload)
 
-        for event in payload:
-            event_type = event.get("eventTypeId")
-            resource = event.get("targetResource")
+        access_token = await get_valid_access_token()
+        if not access_token:
+            return JSONResponse({"error": "Not authenticated"}, status_code=401)
 
-            print(f"📝 Event type: {event_type}")
-            print(f"📍 Resource: {resource}")
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Accept": "application/vnd.deere.axiom.v3+json"
+        }
 
-            message = f"JD Event: {event_type}\nResource: {resource}"
-            send_sms(message)  # or await if async
+        async with httpx.AsyncClient() as client:
+            for event in payload:
+                event_type = event.get("eventTypeId")
+                resource_url = event.get("targetResource")
+
+                print(f"📝 Event type: {event_type}")
+                print(f"📍 Resource: {resource_url}")
+
+                # Fetch resource data
+                if resource_url:
+                    resource_response = await client.get(resource_url, headers=headers)
+                    print("📥 Resource GET Status:", resource_response.status_code)
+
+                    if resource_response.status_code == 200:
+                        resource_data = resource_response.json()
+                        print("✅ Resource Data:", resource_data)
+
+                        # Customize message here as needed:
+                        field_name = resource_data.get("field", {}).get("name", "Unknown Field")
+                        op_type = resource_data.get("operationType", "Unknown Operation")
+                        op_time = resource_data.get("operationStartDateTime", "Unknown Time")
+
+                        message = f"JD Field Operation:\nField: {field_name}\nType: {op_type}\nAt: {op_time}"
+                    else:
+                        message = f"JD Event: {event_type}\nResource fetch failed with status {resource_response.status_code}"
+                else:
+                    message = f"JD Event: {event_type}\nNo resource URL"
+
+                # Send SMS
+                sms_result = send_sms(message)
+                print("📤 SMS Result:", sms_result)
 
         return Response(status_code=204)
     except Exception as e:
         print("Webhook error:", str(e))
         return JSONResponse({"error": str(e)}, status_code=400)
+
 
 
 
