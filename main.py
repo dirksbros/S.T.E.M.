@@ -3,7 +3,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import RedirectResponse, JSONResponse
 import httpx
 from datetime import datetime, timedelta
-from dateutil import tz
+from zoneinfo import ZoneInfo
 import os
 from urllib.parse import urlencode
 from fastapi.staticfiles import StaticFiles
@@ -277,7 +277,8 @@ async def webhook_listener(request: Request):
 
                         # Customize message here as needed:
                         operation_data = resource_response.json()  # assuming this is your GET response
-                        message = format_operation_sms(operation_data)
+                        message = await format_operation_sms(operation_data, access_token)
+
 
                         print("📄 Formatted Message:", message)
                     else:
@@ -354,28 +355,61 @@ async def subscribe_to_field_ops():
 
     return {"message": "Successfully subscribed to JD field operations"}
 
-def format_operation_sms(operation_data):
-    # Extract product name
+async def format_operation_sms(operation_data, access_token):
+    from_zone = ZoneInfo("UTC")
+    to_zone = ZoneInfo("America/Chicago")
+
+    # 1. Extract links
+    def get_link(rel_type):
+        links = operation_data.get("links", [])
+        for link in links:
+            if link.get("rel") == rel_type:
+                return link.get("uri")
+        return None
+
+    field_url = get_link("field")
+    client_url = get_link("client")
+    farm_url = get_link("farm")
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Accept": "application/vnd.deere.axiom.v3+json"
+    }
+
+    async def get_name(url):
+        if not url:
+            return "Unknown"
+        async with httpx.AsyncClient() as client:
+            r = await client.get(url, headers=headers)
+            if r.status_code == 200:
+                return r.json().get("name", "Unnamed")
+        return "Unavailable"
+
+    field_name, client_name, farm_name = await get_name(field_url), await get_name(client_url), await get_name(farm_url)
+
+    # 2. Extract product
     products = operation_data.get("products", [])
     product_name = products[0].get("name", "Unknown Product") if products else "Unknown Product"
 
-    # Extract and format end time
+    # 3. Format time
     end_time_str = operation_data.get("endDate")
     if end_time_str:
-        dt_utc = datetime.fromisoformat(end_time_str.replace("Z", "+00:00"))
-        dt_local = dt_utc.astimezone(tz.tzlocal())
-        time_formatted = dt_local.strftime("%-I:%M %p")  # e.g., 12:58 PM
+        dt_utc = datetime.fromisoformat(end_time_str.replace("Z", "+00:00")).replace(tzinfo=from_zone)
+        dt_local = dt_utc.astimezone(to_zone)
+        time_formatted = dt_local.strftime("%I:%M %p").lstrip("0")
         date_formatted = dt_local.strftime("%Y-%m-%d")
-
-        # Optional: check if it's "today"
-        today_str = datetime.now(tz=tz.tzlocal()).strftime("%Y-%m-%d")
+        today_str = datetime.now(tz=to_zone).strftime("%Y-%m-%d")
         time_suffix = "Today" if date_formatted == today_str else f"on {dt_local.strftime('%b %d')}"
     else:
         time_formatted = "Unknown Time"
         time_suffix = ""
 
-    # Extract operation type
+    # 4. Operation type
     op_type = operation_data.get("fieldOperationType", "Operation").capitalize()
 
-    # Build message
-    return f"{op_type} of {product_name} was completed at {time_formatted} {time_suffix}".strip()
+    # 5. Final message
+    return f"{op_type} of {product_name} on {field_name} (Farm: {farm_name}, Client: {client_name}) was completed at {time_formatted} {time_suffix}."
+
+@app.post("/disabled")
+def disabled_webhook():
+    return Response(status_code=204)
