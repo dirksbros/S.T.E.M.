@@ -1,8 +1,9 @@
-from fastapi import FastAPI, Request
+
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import RedirectResponse, JSONResponse
 import httpx
 from datetime import datetime, timedelta
+from dateutil import tz
 import os
 from urllib.parse import urlencode
 from fastapi.staticfiles import StaticFiles
@@ -119,14 +120,18 @@ async def refresh_access_token():
 async def get_valid_access_token():
     tokens = load_tokens_from_supabase()
     if not tokens.get("access_token"):
-        return None  # not authenticated
+        return None
 
     expires_at = datetime.fromisoformat(tokens["expires_at"])
-    if datetime.utcnow() >= expires_at:
+    now = datetime.utcnow()
+
+    # Add a 1-minute buffer to avoid edge cases
+    if now >= (expires_at - timedelta(seconds=60)):
         await refresh_access_token()
         tokens = load_tokens_from_supabase()
 
     return tokens.get("access_token")
+
 @app.get("/organizations")
 async def get_organizations():
     access_token = await get_valid_access_token()
@@ -232,48 +237,11 @@ async def get_fields():
     names = [f["name"] for f in parsed_fields]
     return {"fields": names, "parsed": parsed_fields}
 
-@app.get("/field-operations")
-async def get_field_operations():
-    access_token = await get_valid_access_token()
-    if not access_token:
-        return JSONResponse({"error": "Not authenticated"}, status_code=401)
 
-    org_id = os.getenv("ORG_ID")
-    field_id = os.getenv("FIELD_ID")
-    if not org_id or not field_id:
-        return JSONResponse({"error": "ORG_ID or FIELD_ID not set in environment"}, status_code=400)
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
 
-    url = f"https://sandboxapi.deere.com/platform/organizations/{org_id}/fields/{field_id}/fieldOperations"
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Accept": "application/vnd.deere.axiom.v3+json"
-    }
-
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url, headers=headers)
-
-    print("John Deere Field Operations API response status:", response.status_code)
-    print("John Deere Field Operations API response body:", response.text)
-
-    if response.status_code != 200:
-        return JSONResponse({"error": "Failed to fetch field operations", "details": response.text}, status_code=response.status_code)
-
-    operations = response.json().get("values", [])
-
-    if not operations:
-        print("No field operations found.")
-        return {"message": "No field operations found."}
-
-    # Print and return the first 5 operations
-    limited_ops = operations[:20]
-    print("Parsed Field Operations (first 5):")
-    for op in limited_ops:
-        print(op)
-
-    return {"field_operations": limited_ops}
-
-from fastapi import Request, Response
-from fastapi.responses import JSONResponse
 
 @app.post("/webhook")
 async def webhook_listener(request: Request):
@@ -308,11 +276,10 @@ async def webhook_listener(request: Request):
                         print("✅ Resource Data:", resource_data)
 
                         # Customize message here as needed:
-                        field_name = resource_data.get("field", {}).get("name", "Unknown Field")
-                        op_type = resource_data.get("operationType", "Unknown Operation")
-                        op_time = resource_data.get("operationStartDateTime", "Unknown Time")
+                        operation_data = resource_response.json()  # assuming this is your GET response
+                        message = format_operation_sms(operation_data)
 
-                        message = f"JD Field Operation:\nField: {field_name}\nType: {op_type}\nAt: {op_time}"
+                        print("📄 Formatted Message:", message)
                     else:
                         message = f"JD Event: {event_type}\nResource fetch failed with status {resource_response.status_code}"
                 else:
@@ -336,7 +303,9 @@ async def subscribe_to_field_ops():
     if not access_token:
         return JSONResponse({"error": "Not authenticated"}, status_code=401)
 
-    org_id = "595239"  # Required filter
+    org_id = os.getenv("ORG_ID")
+    if not org_id:
+        return JSONResponse({"error": "ORG_ID not set in environment"}, status_code=400)
     webhook_url = "https://s-t-e-m.onrender.com/webhook"
     secret_token = "wVaS=dWgjKTyCg=g3RbDj0V51MWg+ges9SVvpgIYlbOO2aqBqtSuivWonJY31vrSzf"
 
@@ -384,3 +353,29 @@ async def subscribe_to_field_ops():
         }, status_code=response.status_code)
 
     return {"message": "Successfully subscribed to JD field operations"}
+
+def format_operation_sms(operation_data):
+    # Extract product name
+    products = operation_data.get("products", [])
+    product_name = products[0].get("name", "Unknown Product") if products else "Unknown Product"
+
+    # Extract and format end time
+    end_time_str = operation_data.get("endDate")
+    if end_time_str:
+        dt_utc = datetime.fromisoformat(end_time_str.replace("Z", "+00:00"))
+        dt_local = dt_utc.astimezone(tz.tzlocal())
+        time_formatted = dt_local.strftime("%-I:%M %p")  # e.g., 12:58 PM
+        date_formatted = dt_local.strftime("%Y-%m-%d")
+
+        # Optional: check if it's "today"
+        today_str = datetime.now(tz=tz.tzlocal()).strftime("%Y-%m-%d")
+        time_suffix = "Today" if date_formatted == today_str else f"on {dt_local.strftime('%b %d')}"
+    else:
+        time_formatted = "Unknown Time"
+        time_suffix = ""
+
+    # Extract operation type
+    op_type = operation_data.get("fieldOperationType", "Operation").capitalize()
+
+    # Build message
+    return f"{op_type} of {product_name} was completed at {time_formatted} {time_suffix}".strip()
