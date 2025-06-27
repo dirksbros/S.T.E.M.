@@ -408,7 +408,7 @@ async def format_operation_sms(operation_data, access_token):
     op_type = operation_data.get("fieldOperationType", "Operation").capitalize()
 
     # 5. Final message
-    return f"{op_type} of {product_name} on {field_name} (Farm: {farm_name}, Client: {client_name}) was completed at {time_formatted} {time_suffix}."
+    return f"{op_type} of {product_name} on {field_name} was completed at {time_formatted} {time_suffix}."
 
 @app.post("/disabled")
 def disabled_webhook():
