@@ -279,6 +279,27 @@ async def webhook_listener(request: Request):
                         operation_data = resource_response.json()  # assuming this is your GET response
                         message = await format_operation_sms(operation_data, access_token)
 
+                        # Extract farm_name from operation_data or set to "Unknown"
+                        farm_name = operation_data.get("farm", {}).get("name", "Unknown")
+
+                        # === Match farm to phone number ===
+                        client_result = supabase.table("sms_farms").select("client_name").eq("farm_name", farm_name).single().execute()
+                        client_name = client_result.data.get("client_name") if client_result.data else None
+
+                        phone_number = None
+                        if client_name:
+                            phone_result = supabase.table("sms_clients").select("phone").eq("client_name", client_name).single().execute()
+                            phone_number = phone_result.data.get("phone") if phone_result.data else None
+
+                        # === Send SMS ===
+                        if phone_number:
+                            sms_result = send_sms(message, to_number=phone_number)
+                        else:
+                            sms_result = {"error": "No phone number found for farm: " + farm_name}
+
+                        print("📤 SMS Result:", sms_result)
+
+
 
                         print("📄 Formatted Message:", message)
                     else:
@@ -286,9 +307,7 @@ async def webhook_listener(request: Request):
                 else:
                     message = f"JD Event: {event_type}\nNo resource URL"
 
-                # Send SMS
-                sms_result = send_sms(message)
-                print("📤 SMS Result:", sms_result)
+                print("📄 Message to send:", message)
 
         return Response(status_code=204)
     except Exception as e:
@@ -386,6 +405,7 @@ async def format_operation_sms(operation_data, access_token):
         return "Unavailable"
 
     field_name, client_name, farm_name = await get_name(field_url), await get_name(client_url), await get_name(farm_url)
+    
 
     # 2. Extract product
     products = operation_data.get("products", [])
@@ -408,7 +428,9 @@ async def format_operation_sms(operation_data, access_token):
     op_type = operation_data.get("fieldOperationType", "Operation").capitalize()
 
     # 5. Final message
-    return f"{op_type} of {product_name} on {field_name} was completed at {time_formatted} {time_suffix}."
+        # 5. Final message
+    msg = f"{op_type} of {product_name} on {field_name} was completed at {time_formatted} {time_suffix}."
+    return msg, farm_name
 
 @app.post("/disabled")
 def disabled_webhook():
