@@ -170,14 +170,13 @@ async def get_organizations():
 
 from twilio.rest import Client
 
-def send_sms(message: str):
+def send_sms(message: str, to_number: str):
     sid = os.getenv("TWILIO_ACCOUNT_SID")
     token = os.getenv("TWILIO_AUTH_TOKEN")
     from_number = os.getenv("TWILIO_PHONE_FROM")
-    to_number = os.getenv("TWILIO_PHONE_TO")
 
     if not all([sid, token, from_number, to_number]):
-        print("Missing Twilio environment variables.")
+        print("Missing Twilio environment variables or phone number.")
         return {"error": "Twilio config incomplete."}
 
     client = Client(sid, token)
@@ -186,6 +185,7 @@ def send_sms(message: str):
         return {"status": "sent", "sid": msg.sid}
     except Exception as e:
         return {"error": str(e)}
+
 
 @app.get("/fields")
 async def get_fields():
