@@ -277,10 +277,12 @@ async def webhook_listener(request: Request):
 
                         # Customize message here as needed:
                         operation_data = resource_response.json()  # assuming this is your GET response
-                        message = await format_operation_sms(operation_data, access_token)
+                        message, field_name, client_name, farm_name = await format_operation_sms(operation_data, access_token)
+
 
                         # Extract farm_name from operation_data or set to "Unknown"
-                        farm_name = operation_data.get("farm", {}).get("name", "Unknown")
+                        if not farm_name:
+                            farm_name = "Unknown Farm"
                         print(f"Farm Name: {farm_name}")
 
                         # === Match farm to phone number ===
@@ -390,7 +392,6 @@ async def format_operation_sms(operation_data, access_token):
     from_zone = ZoneInfo("UTC")
     to_zone = ZoneInfo("America/Chicago")
 
-    # 1. Extract links
     def get_link(rel_type):
         links = operation_data.get("links", [])
         for link in links:
@@ -417,13 +418,10 @@ async def format_operation_sms(operation_data, access_token):
         return "Unavailable"
 
     field_name, client_name, farm_name = await get_name(field_url), await get_name(client_url), await get_name(farm_url)
-    
 
-    # 2. Extract product
     products = operation_data.get("products", [])
     product_name = products[0].get("name", "Unknown Product") if products else "Unknown Product"
 
-    # 3. Format time
     end_time_str = operation_data.get("endDate")
     if end_time_str:
         dt_utc = datetime.fromisoformat(end_time_str.replace("Z", "+00:00")).replace(tzinfo=from_zone)
@@ -436,13 +434,11 @@ async def format_operation_sms(operation_data, access_token):
         time_formatted = "Unknown Time"
         time_suffix = ""
 
-    # 4. Operation type
     op_type = operation_data.get("fieldOperationType", "Operation").capitalize()
-
-    # 5. Final message
-        # 5. Final message
     msg = f"{op_type} of {product_name} on {field_name} was completed at {time_formatted} {time_suffix}."
-    return msg, farm_name
+
+    return msg, field_name, client_name, farm_name
+
 
 @app.post("/disabled")
 def disabled_webhook():
