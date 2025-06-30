@@ -281,16 +281,28 @@ async def webhook_listener(request: Request):
 
                         # Extract farm_name from operation_data or set to "Unknown"
                         farm_name = operation_data.get("farm", {}).get("name", "Unknown")
+                        print(f"Farm Name: {farm_name}")
 
                         # === Match farm to phone number ===
-                        client_result = supabase.table("sms_farms").select("client_name").eq("farm_name", farm_name).single().execute()
-                        client_name = client_result.data.get("client_name") if client_result.data else None
+                        # === Match farm to client name ===
+                        farm_lookup = supabase.table("sms_farms").select("client_name").eq("farm_name", farm_name).execute()
+                        client_name = None
+                        if farm_lookup.data and len(farm_lookup.data) == 1:
+                            client_name = farm_lookup.data[0]["client_name"]
+                            print(f"✅ Found client_name '{client_name}' for farm_name '{farm_name}'")
+                        else:
+                            print(f"⚠️ No matching farm_name '{farm_name}' in sms_farms table")
+
+           
 
                         phone_number = None
                         if client_name:
                             phone_result = supabase.table("sms_clients").select("phone").eq("client_name", client_name).single().execute()
                             phone_number = phone_result.data.get("phone") if phone_result.data else None
-
+                            if phone_number:
+                                print(f"✅ Found phone number '{phone_number}' for client_name '{client_name}'")
+                            else:
+                                print(f"⚠️ No phone number found for client_name '{client_name}'")
                         # === Send SMS ===
                         if phone_number:
                             sms_result = send_sms(message, to_number=phone_number)
