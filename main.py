@@ -174,18 +174,26 @@ def send_sms(message: str, to_number: str):
     sid = os.getenv("TWILIO_ACCOUNT_SID")
     token = os.getenv("TWILIO_AUTH_TOKEN")
     from_number = os.getenv("TWILIO_PHONE_FROM")
+    always_notify = os.getenv("TWILIO_ALWAYS_NOTIFY", "")
+    extra_numbers = [num.strip() for num in always_notify.split(",") if num.strip()]
 
     if not all([sid, token, from_number, to_number]):
-        print("Missing Twilio environment variables or phone number.")
+        print("Missing Twilio environment variables.")
         return {"error": "Twilio config incomplete."}
 
     client = Client(sid, token)
-    try:
-        msg = client.messages.create(body=message, from_=from_number, to=to_number)
-        return {"status": "sent", "sid": msg.sid}
-    except Exception as e:
-        return {"error": str(e)}
 
+    all_recipients = [to_number] + extra_numbers
+    results = []
+
+    for num in all_recipients:
+        try:
+            msg = client.messages.create(body=message, from_=from_number, to=num)
+            results.append({"to": num, "status": "sent", "sid": msg.sid})
+        except Exception as e:
+            results.append({"to": num, "error": str(e)})
+
+    return results
 
 @app.get("/fields")
 async def get_fields():
@@ -424,12 +432,18 @@ async def format_operation_sms(operation_data, access_token):
 
     end_time_str = operation_data.get("endDate")
     if end_time_str:
-        dt_utc = datetime.fromisoformat(end_time_str.replace("Z", "+00:00")).replace(tzinfo=from_zone)
-        dt_local = dt_utc.astimezone(to_zone)
+        # Parse ISO 8601 datetime directly as UTC
+        dt_utc = datetime.fromisoformat(end_time_str.replace("Z", "+00:00"))
+
+        # Convert to Central Time (America/Chicago)
+        dt_local = dt_utc.astimezone(ZoneInfo("America/Chicago"))
+
         time_formatted = dt_local.strftime("%I:%M %p").lstrip("0")
         date_formatted = dt_local.strftime("%Y-%m-%d")
-        today_str = datetime.now(tz=to_zone).strftime("%Y-%m-%d")
+        today_str = datetime.now(tz=ZoneInfo("America/Chicago")).strftime("%Y-%m-%d")
         time_suffix = "Today" if date_formatted == today_str else f"on {dt_local.strftime('%b %d')}"
+
+
     else:
         time_formatted = "Unknown Time"
         time_suffix = ""
