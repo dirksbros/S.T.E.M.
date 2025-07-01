@@ -322,6 +322,8 @@ async def webhook_listener(request: Request):
                             sms_result = {"error": error_msg}
                             log_sms_event(number="", content=message, error=error_msg)
 
+                            
+
                         print("📤 SMS Result:", sms_result)
                         print("📄 Formatted Message:", message)
                     else:
