@@ -310,7 +310,13 @@ async def webhook_listener(request: Request):
                         # === Send SMS ===
                         if phone_number:
                             sms_result = send_sms(message, to_number=phone_number)
-                            log_sms_event(number=phone_number, content=message, error=None if sms_result.get("status") == "sent" else sms_result.get("error"))
+                            first_result = sms_result[0] if sms_result else {}
+                            log_sms_event(
+                                number=phone_number,
+                                content=message,
+                                error=None if first_result.get("status") == "sent" else first_result.get("error")
+                                
+                        )  
                         else:
                             error_msg = "No phone number found for farm: " + farm_name
                             sms_result = {"error": error_msg}
