@@ -259,6 +259,7 @@ async def webhook_listener(request: Request):
 
         access_token = await get_valid_access_token()
         if not access_token:
+            log_sms_event(number="", content="Webhook: Not authenticated", error="Not authenticated")
             return JSONResponse({"error": "Not authenticated"}, status_code=401)
 
         headers = {
@@ -283,18 +284,13 @@ async def webhook_listener(request: Request):
                         resource_data = resource_response.json()
                         print("✅ Resource Data:", resource_data)
 
-                        # Customize message here as needed:
-                        operation_data = resource_response.json()  # assuming this is your GET response
+                        operation_data = resource_response.json()
                         message, field_name, client_name, farm_name = await format_operation_sms(operation_data, access_token)
 
-
-                        # Extract farm_name from operation_data or set to "Unknown"
                         if not farm_name:
                             farm_name = "Unknown Farm"
                         print(f"Farm Name: {farm_name}")
 
-                        # === Match farm to phone number ===
-                        # === Match farm to client name ===
                         farm_lookup = supabase.table("sms_farms").select("client_name").eq("farm_name", farm_name).execute()
                         client_name = None
                         if farm_lookup.data and len(farm_lookup.data) == 1:
@@ -302,8 +298,6 @@ async def webhook_listener(request: Request):
                             print(f"✅ Found client_name '{client_name}' for farm_name '{farm_name}'")
                         else:
                             print(f"⚠️ No matching farm_name '{farm_name}' in sms_farms table")
-
-           
 
                         phone_number = None
                         if client_name:
@@ -316,24 +310,27 @@ async def webhook_listener(request: Request):
                         # === Send SMS ===
                         if phone_number:
                             sms_result = send_sms(message, to_number=phone_number)
+                            log_sms_event(number=phone_number, content=message, error=None if sms_result.get("status") == "sent" else sms_result.get("error"))
                         else:
-                            sms_result = {"error": "No phone number found for farm: " + farm_name}
+                            error_msg = "No phone number found for farm: " + farm_name
+                            sms_result = {"error": error_msg}
+                            log_sms_event(number="", content=message, error=error_msg)
 
                         print("📤 SMS Result:", sms_result)
-
-
-
                         print("📄 Formatted Message:", message)
                     else:
                         message = f"JD Event: {event_type}\nResource fetch failed with status {resource_response.status_code}"
+                        log_sms_event(number="", content=message, error=f"Resource fetch failed with status {resource_response.status_code}")
                 else:
                     message = f"JD Event: {event_type}\nNo resource URL"
+                    log_sms_event(number="", content=message, error="No resource URL")
 
                 print("📄 Message to send:", message)
 
         return Response(status_code=204)
     except Exception as e:
         print("Webhook error:", str(e))
+        log_sms_event(number="", content="Webhook Exception", error=str(e))
         return JSONResponse({"error": str(e)}, status_code=400)
 
 
@@ -453,6 +450,13 @@ async def format_operation_sms(operation_data, access_token):
     msg = f"{op_type} of {product_name} on {field_name} was completed at {time_formatted} {time_suffix}."
 
     return msg, field_name, client_name, farm_name
+
+def log_sms_event(number: str, content: str, error: str = None):
+    supabase.table("sms_logs").insert({
+        "number": number,
+        "Content": content,
+        "error": error or ""
+    }).execute()
 
 @app.post("/disabled")
 def disabled_webhook():
