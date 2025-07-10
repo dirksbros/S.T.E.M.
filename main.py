@@ -563,7 +563,7 @@ async def send_confirmation_sms(data: SMSRequest):
     to_number = f"+1{data.phone}"
     try:
         message = client.messages.create(
-            body="You’ve been signed up for automated text alerts from Dirks Bros. You’ll receive a message when field application is completed. Reply STOP to opt out at any time. Thank you – Dirks Bros",
+            body="You’re now set up for application alerts from Dirks Bros. We’ll text when work is done on one of your fields. Reply STOP to unsubscribe. Thank you – Dirks Bros",
             from_=TWILIO_PHONE_NUMBER,
             to=to_number,
             status_callback="https://s-t-e-m.onrender.com/sms-status"
