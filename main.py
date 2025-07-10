@@ -11,12 +11,23 @@ from urllib.parse import urlencode
 from fastapi.staticfiles import StaticFiles
 from supabase import create_client, Client
 from dotenv import load_dotenv
+from fastapi.middleware.cors import CORSMiddleware
+
+
 
 load_dotenv()
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://127.0.0.1:5500"],  # You can restrict this to ["http://127.0.0.1:5500"] if needed
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 CLIENT_ID = os.getenv("JD_CLIENT_ID")
 CLIENT_SECRET = os.getenv("JD_CLIENT_SECRET")
 REDIRECT_URI = os.getenv("JD_REDIRECT_URI")
