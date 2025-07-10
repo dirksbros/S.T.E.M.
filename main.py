@@ -12,6 +12,8 @@ from fastapi.staticfiles import StaticFiles
 from supabase import create_client, Client
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from twilio.rest import Client
 
 
 
@@ -546,3 +548,25 @@ async def handle_sms(From: str = Form(), Body: str = Form()):
         resp.message("🤖 Unrecognized command. Text START to subscribe or STOP to unsubscribe.")
 
     return PlainTextResponse(content=str(resp), media_type="application/xml")
+
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")  # e.g., "+15556667777"
+
+client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+
+class SMSRequest(BaseModel):
+    phone: str  # should be in 1112223333 format
+
+@app.post("/send-confirmation-sms")
+async def send_confirmation_sms(data: SMSRequest):
+    to_number = f"+1{data.phone}"
+    try:
+        message = client.messages.create(
+            body="You've agreed to receive alerts from [Your Service]. Reply STOP to opt out at any time.",
+            from_=TWILIO_PHONE_NUMBER,
+            to=to_number
+        )
+        return JSONResponse(content={"status": "sent", "sid": message.sid}, status_code=200)
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
