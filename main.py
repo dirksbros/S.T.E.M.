@@ -11,6 +11,7 @@ from urllib.parse import urlencode
 from fastapi.staticfiles import StaticFiles
 from supabase import create_client, Client
 from dotenv import load_dotenv
+
 load_dotenv()
 
 app = FastAPI()
