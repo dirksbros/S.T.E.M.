@@ -25,7 +25,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:5500"],  # You can restrict this to ["http://127.0.0.1:5500"] if needed
+    allow_origins=["http://127.0.0.1:5500", "https://alerts.dirksbros.com"],  # You can restrict this to ["http://127.0.0.1:5500"] if needed
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
