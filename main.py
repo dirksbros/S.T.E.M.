@@ -518,7 +518,7 @@ async def sms_webhook(
 
     return str(response)
 
-@app.post("/Opt-in", response_class=PlainTextResponse)
+app.post("/Opt-in", response_class=PlainTextResponse)
 async def handle_sms(From: str = Form(), Body: str = Form()):
 
     # Format: From = "+16605551234"
@@ -551,7 +551,7 @@ async def handle_sms(From: str = Form(), Body: str = Form()):
 
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
-TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")  # e.g., "+15556667777"
+TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_FROM")  # e.g., "+15556667777"
 
 client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
