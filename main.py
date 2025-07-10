@@ -506,11 +506,8 @@ async def sms_webhook(
     return str(response)
 
 @app.post("/Opt-in", response_class=PlainTextResponse)
-async def opt_in_handler(
-    request: Request,
-    From: str = Form(...),
-    Body: str = Form(...)
-):
+async def handle_sms(From: str = Form(), Body: str = Form()):
+
     # Format: From = "+16605551234"
     try:
         phone_str = From.strip().replace("+1", "")  # Remove country code
