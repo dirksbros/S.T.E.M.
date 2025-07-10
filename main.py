@@ -565,7 +565,7 @@ async def send_confirmation_sms(data: SMSRequest):
         message = client.messages.create(
             body="You’ve been signed up for automated text alerts from Dirks Bros. You’ll receive a message when field application is completed. Reply STOP to opt out at any time. Thank you – Dirks Bros",
             from_=TWILIO_PHONE_NUMBER,
-            to=to_number
+            to=to_number,
             status_callback="https://s-t-e-m.onrender.com/sms-status"
         )
         return JSONResponse(content={"status": "sent", "sid": message.sid}, status_code=200)
