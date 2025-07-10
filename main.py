@@ -566,7 +566,23 @@ async def send_confirmation_sms(data: SMSRequest):
             body="You’ve been signed up for automated text alerts from Dirks Bros. You’ll receive a message when field application is completed. Reply STOP to opt out at any time. Thank you – Dirks Bros",
             from_=TWILIO_PHONE_NUMBER,
             to=to_number
+            status_callback="https://s-t-e-m.onrender.com/sms-status"
         )
         return JSONResponse(content={"status": "sent", "sid": message.sid}, status_code=200)
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
+    
+@app.post("/sms-status")
+async def sms_status(request: Request):
+    form = await request.form()
+    message_status = form.get("MessageStatus")
+    to_number = form.get("To")
+
+    if message_status == "delivered":
+        # Clean number format (remove +1 if needed)
+        phone = to_number.replace("+1", "")
+        supabase.table("sms_clients").upsert({
+            "phone": int(phone),
+            "opted_in": True
+        }).execute()
+    return "OK"
