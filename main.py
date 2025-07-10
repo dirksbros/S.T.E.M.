@@ -1,6 +1,8 @@
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, Form
+from fastapi.responses import PlainTextResponse
 from fastapi.responses import RedirectResponse, JSONResponse
+from twilio.twiml.messaging_response import MessagingResponse
 import httpx
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -469,3 +471,69 @@ def log_sms_event(number: str, content: str, error: str = None):
 @app.post("/disabled")
 def disabled_webhook():
     return Response(status_code=204)
+
+
+# Load from environment or set directly
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+@app.post("/sms-webhook", response_class=PlainTextResponse)
+async def sms_webhook(
+    request: Request,
+    From: str = Form(...),
+    Body: str = Form(...)
+):
+    response = MessagingResponse()
+    body = Body.strip().lower()
+
+    if body == "start":
+        # Add phone number to Supabase if not already present
+        existing = supabase.table("sms_clients").select("*").eq("phone_number", From).execute()
+        if not existing.data:
+            supabase.table("sms_clients").insert({"phone_number": From}).execute()
+            response.message("✅ You've been opted in to alerts from Dirks Bros.")
+        else:
+            response.message("📲 You're already subscribed to Dirks Bros alerts.")
+    elif body == "stop":
+        # Remove phone number from Supabase
+        supabase.table("sms_clients").delete().eq("phone_number", From).execute()
+        response.message("🚫 You've been opted out of Dirks Bros alerts. Reply START to opt back in.")
+    else:
+        response.message("🤖 Reply START to subscribe or STOP to unsubscribe from Dirks Bros alerts.")
+
+    return str(response)
+
+@app.post("/Opt-in", response_class=PlainTextResponse)
+async def opt_in_handler(
+    request: Request,
+    From: str = Form(...),
+    Body: str = Form(...)
+):
+    # Format: From = "+16605551234"
+    try:
+        phone_str = From.strip().replace("+1", "")  # Remove country code
+        phone_int = int(phone_str)  # Convert to int to match Supabase int8
+    except ValueError:
+        return PlainTextResponse("Invalid phone number.", media_type="application/xml")
+
+    message = Body.strip().upper()
+    resp = MessagingResponse()
+
+    if message == "START":
+        # Check if phone number exists
+        existing = supabase.table("sms_clients").select("*").eq("phone", phone_int).execute()
+        if not existing.data:
+            supabase.table("sms_clients").insert({"phone": phone_int, "opted_in": True}).execute()
+            resp.message("✅ You’ve been subscribed to Dirks Bros text alerts. Text STOP to unsubscribe anytime.")
+        else:
+            # Update opted_in in case it's false
+            supabase.table("sms_clients").update({"opted_in": True}).eq("phone", phone_int).execute()
+            resp.message("📲 You’re already subscribed to Dirks Bros alerts. Text STOP to unsubscribe anytime.")
+    elif message == "STOP":
+        supabase.table("sms_clients").update({"opted_in": False}).eq("phone", phone_int).execute()
+        resp.message("👋 You’ve been unsubscribed from Dirks Bros alerts. Reply START to re-subscribe.")
+    else:
+        resp.message("🤖 Unrecognized command. Text START to subscribe or STOP to unsubscribe.")
+
+    return PlainTextResponse(content=str(resp), media_type="application/xml")
