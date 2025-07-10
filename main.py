@@ -563,7 +563,7 @@ async def send_confirmation_sms(data: SMSRequest):
     to_number = f"+1{data.phone}"
     try:
         message = client.messages.create(
-            body="You've agreed to receive alerts from [Your Service]. Reply STOP to opt out at any time.",
+            body="You’ve been signed up for automated text alerts from Dirks Bros. You’ll receive a message when field application is completed. Reply STOP to opt out at any time. Thank you – Dirks Bros",
             from_=TWILIO_PHONE_NUMBER,
             to=to_number
         )
