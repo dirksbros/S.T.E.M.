@@ -508,7 +508,7 @@ async def sms_webhook(
             supabase.table("sms_clients").insert({"phone_number": From}).execute()
             response.message("✅ You've been opted in to alerts from Dirks Bros.")
         else:
-            response.message("📲 You're already subscribed to Dirks Bros alerts.")
+            return
     elif body == "stop":
         # Remove phone number from Supabase
         supabase.table("sms_clients").delete().eq("phone_number", From).execute()
