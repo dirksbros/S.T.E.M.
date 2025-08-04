@@ -518,7 +518,7 @@ async def sms_webhook(
 
     return str(response)
 
-app.post("/Opt-in", response_class=PlainTextResponse)
+@app.post("/Opt-in", response_class=PlainTextResponse)
 async def handle_sms(From: str = Form(), Body: str = Form()):
 
     # Format: From = "+16605551234"
@@ -563,7 +563,7 @@ async def send_confirmation_sms(data: SMSRequest):
     to_number = f"+1{data.phone}"
     try:
         message = client.messages.create(
-            body="You’re now set up for application alerts from Dirks Bros. We’ll text when work is done on one of your fields. Reply STOP to unsubscribe. Thank you – Dirks Bros",
+            body="Dirks Bros: Now offering text alerts! You'll receive automated notifications when your application or job is complete. We may also occasionally send manual updates on fertilizer markets or other valuable info. Reply STOP to opt out.",
             from_=TWILIO_PHONE_NUMBER,
             to=to_number,
             status_callback="https://s-t-e-m.onrender.com/sms-status"
