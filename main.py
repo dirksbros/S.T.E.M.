@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from twilio.rest import Client
 from fastapi import APIRouter, HTTPException
+import traceback
 
 
 
@@ -212,11 +213,10 @@ def send_sms(message: str, to_number: str):
     extra_numbers = [num.strip() for num in always_notify.split(",") if num.strip()]
 
     if not all([sid, token, from_number, to_number]):
-        print("Missing Twilio environment variables.")
+        log_error("send_sms", "Missing Twilio environment variables.")
         return {"error": "Twilio config incomplete."}
 
     client = Client(sid, token)
-
     all_recipients = [to_number] + extra_numbers
     results = []
 
@@ -225,6 +225,7 @@ def send_sms(message: str, to_number: str):
             msg = client.messages.create(body=message, from_=from_number, to=num)
             results.append({"to": num, "status": "sent", "sid": msg.sid})
         except Exception as e:
+            log_error("send_sms", e)
             results.append({"to": num, "error": str(e)})
 
     return results
@@ -521,6 +522,11 @@ def log_sms_event(number: str, content: str, error: str = None):
         "error": error or ""
     }).execute()
 
+def log_error(context: str, error: Exception):
+    print(f"[ERROR] {context}: {error}")
+    traceback.print_exc()
+    # Optionally, log to supabase or a file here
+
 @app.post("/disabled")
 def disabled_webhook():
     return Response(status_code=204)
@@ -631,9 +637,13 @@ class BulkSMSRequest(BaseModel):
 async def send_bulk_sms(data: BulkSMSRequest):
     results = []
     for phone in data.phones:
-        result = send_sms(data.message, to_number=str(phone))
-        results.append(result)
-        print("Bulk SMS sent to:", data.phones)
+        try:
+            result = send_sms(data.message, to_number=str(phone))
+            results.append(result)
+        except Exception as e:
+            log_error("send-bulk-sms", e)
+            results.append({"to": phone, "error": str(e)})
+    print("Bulk SMS sent to:", data.phones)
     return {"results": results}
 
 api = APIRouter()
@@ -648,10 +658,15 @@ def get_clients(opted_in: bool = None):
 
 @api.post("/clients")
 def create_client(client: dict):
-    result = supabase.table("sms_clients").insert(client).execute()
-    if result.error:
-        raise HTTPException(status_code=400, detail=result.error)
-    return result.data[0]
+    try:
+        result = supabase.table("sms_clients").insert(client).execute()
+        if result.error:
+            log_error("create_client", result.error)
+            raise HTTPException(status_code=400, detail=result.error)
+        return result.data[0]
+    except Exception as e:
+        log_error("create_client", e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 @api.put("/clients/{client_id}")
 def update_client(client_id: int, update: dict):
