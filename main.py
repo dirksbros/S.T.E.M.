@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from twilio.rest import Client
+from fastapi import APIRouter, HTTPException
 
 
 
@@ -634,4 +635,64 @@ async def send_bulk_sms(data: BulkSMSRequest):
         results.append(result)
         print("Bulk SMS sent to:", data.phones)
     return {"results": results}
-    
+
+api = APIRouter()
+
+@api.get("/clients")
+def get_clients(opted_in: bool = None):
+    query = supabase.table("sms_clients").select("*")
+    if opted_in is not None:
+        query = query.eq("opted_in", opted_in)
+    result = query.execute()
+    return result.data or []
+
+@api.post("/clients")
+def create_client(client: dict):
+    result = supabase.table("sms_clients").insert(client).execute()
+    if result.error:
+        raise HTTPException(status_code=400, detail=result.error)
+    return result.data[0]
+
+@api.put("/clients/{client_id}")
+def update_client(client_id: int, update: dict):
+    result = supabase.table("sms_clients").update(update).eq("id", client_id).execute()
+    if result.error:
+        raise HTTPException(status_code=400, detail=result.error)
+    return {"success": True}
+
+@api.delete("/clients/{client_id}")
+def delete_client(client_id: int):
+    result = supabase.table("sms_clients").delete().eq("id", client_id).execute()
+    if result.error:
+        raise HTTPException(status_code=400, detail=result.error)
+    return {"success": True}
+
+@api.get("/farms")
+def get_farms():
+    result = supabase.table("sms_farms").select("*").execute()
+    return result.data or []
+
+@api.post("/farms")
+def create_farm(farm: dict):
+    result = supabase.table("sms_farms").insert(farm).execute()
+    if result.error:
+        raise HTTPException(status_code=400, detail=result.error)
+    return result.data[0]
+
+@api.put("/farms/{farm_id}")
+def update_farm(farm_id: int, update: dict):
+    result = supabase.table("sms_farms").update(update).eq("id", farm_id).execute()
+    if result.error:
+        raise HTTPException(status_code=400, detail=result.error)
+    return {"success": True}
+
+@api.delete("/farms/{farm_id}")
+def delete_farm(farm_id: int):
+    result = supabase.table("sms_farms").delete().eq("id", farm_id).execute()
+    if result.error:
+        raise HTTPException(status_code=400, detail=result.error)
+    return {"success": True}
+
+# Mount the router
+app.include_router(api, prefix="/api")
+
