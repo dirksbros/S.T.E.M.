@@ -1,5 +1,4 @@
-
-from fastapi import FastAPI, Request, Response, Form
+from fastapi import FastAPI, Request, Response, Form, Body
 from fastapi.responses import PlainTextResponse
 from fastapi.responses import RedirectResponse, JSONResponse
 from twilio.twiml.messaging_response import MessagingResponse
@@ -37,9 +36,24 @@ TOKEN_URL = "https://signin.johndeere.com/oauth2/aus78tnlaysMraFhC1t7/v1/token"
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# Only create supabase client if credentials are provided and not placeholder values
+if (SUPABASE_URL and SUPABASE_KEY and
+    SUPABASE_URL != "your_supabase_url" and
+    SUPABASE_KEY != "your_supabase_key" and
+    SUPABASE_URL.startswith("http")):
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    print("Supabase client initialized successfully")
+else:
+    supabase = None
+    print("WARNING: Supabase credentials not configured. Database features will be disabled.")
+    print(f"   SUPABASE_URL: {SUPABASE_URL}")
+    print(f"   SUPABASE_KEY: {'[SET]' if SUPABASE_KEY else '[NOT SET]'}")
 
 def save_tokens_to_supabase(access_token, refresh_token, expires_at):
+    if not supabase:
+        print("WARNING: Supabase not configured, skipping token save")
+        return
     supabase.table("tokens").upsert({
         "id": 1,
         "access_token": access_token,
@@ -48,6 +62,9 @@ def save_tokens_to_supabase(access_token, refresh_token, expires_at):
     }).execute()
 
 def load_tokens_from_supabase():
+    if not supabase:
+        print("WARNING: Supabase not configured, returning empty tokens")
+        return {}
     result = supabase.table("tokens").select("*").eq("id", 1).single().execute()
     if result.data:
         return result.data
@@ -262,9 +279,27 @@ async def get_fields():
     return {"fields": names, "parsed": parsed_fields}
 
 
+@app.get("/")
+def root():
+    return {
+        "message": "FastAPI John Deere Integration API",
+        "status": "running",
+        "supabase_connected": supabase is not None,
+        "endpoints": [
+            "/health - Health check",
+            "/login - Start John Deere OAuth",
+            "/organizations - Get JD organizations",
+            "/fields - Get JD fields",
+            "/subscribe - Subscribe to JD webhooks"
+        ]
+    }
+
 @app.get("/health")
 def health_check():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "supabase_connected": supabase is not None
+    }
 
 
 @app.post("/webhook")
@@ -476,6 +511,9 @@ async def format_operation_sms(operation_data, access_token):
     return msg, field_name, client_name, farm_name
 
 def log_sms_event(number: str, content: str, error: str = None):
+    if not supabase:
+        print(f"WARNING: Would log SMS event: {number}, {content}, {error}")
+        return
     supabase.table("sms_logs").insert({
         "number": number,
         "Content": content,
@@ -487,10 +525,7 @@ def disabled_webhook():
     return Response(status_code=204)
 
 
-# Load from environment or set directly
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+# Supabase client already initialized above
 
 @app.post("/sms-webhook", response_class=PlainTextResponse)
 async def sms_webhook(
@@ -586,3 +621,17 @@ async def sms_status(request: Request):
             "opted_in": True
         }).execute()
     return "OK"
+
+class BulkSMSRequest(BaseModel):
+    phones: list
+    message: str
+
+@app.post("/send-bulk-sms")
+async def send_bulk_sms(data: BulkSMSRequest):
+    results = []
+    for phone in data.phones:
+        result = send_sms(data.message, to_number=str(phone))
+        results.append(result)
+        print("Bulk SMS sent to:", data.phones)
+    return {"results": results}
+    
