@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from twilio.rest import Client
 from fastapi import APIRouter, HTTPException
 import traceback
+import json
 
 
 
@@ -229,6 +230,58 @@ def send_sms(message: str, to_number: str):
             results.append({"to": num, "error": str(e)})
 
     return results
+
+def send_sms_template(content_sid: str, to_number: str, content_variables: dict = None):
+    """Send SMS using Twilio Content Template"""
+    sid = os.getenv("TWILIO_ACCOUNT_SID")
+    token = os.getenv("TWILIO_AUTH_TOKEN")
+    from_number = os.getenv("TWILIO_PHONE_FROM")
+    
+    if not all([sid, token, from_number, to_number]):
+        return {"error": "Twilio config incomplete."}
+
+    client = Client(sid, token)
+    try:
+        # Prepare message parameters
+        message_params = {
+            "content_sid": content_sid,
+            "from_": from_number,
+            "to": to_number
+        }
+        
+        # Add content variables if provided
+        if content_variables:
+            message_params["content_variables"] = json.dumps(content_variables)
+            
+        msg = client.messages.create(**message_params)
+        return {"to": to_number, "status": "sent", "sid": msg.sid}
+    except Exception as e:
+        log_error("send_sms_template", e)
+        return {"to": to_number, "error": str(e)}
+
+class TemplateSMSRequest(BaseModel):
+    content_sid: str
+    phones: list
+    content_variables: dict = None
+
+@app.post("/send-template-sms")
+async def send_template_sms(data: TemplateSMSRequest):
+    """Send template SMS to multiple recipients"""
+    results = []
+    for phone in data.phones:
+        try:
+            result = send_sms_template(
+                content_sid=data.content_sid,
+                to_number=str(phone),
+                content_variables=data.content_variables
+            )
+            results.append(result)
+        except Exception as e:
+            log_error("send-template-sms", e)
+            results.append({"to": phone, "error": str(e)})
+    
+    print("Template SMS sent to:", data.phones)
+    return {"results": results}
 
 @app.get("/fields")
 async def get_fields():
