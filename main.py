@@ -764,3 +764,58 @@ def delete_farm(farm_id: int):
 # Mount the router
 app.include_router(api, prefix="/api")
 
+import json
+import traceback
+
+class ImageSMSRequest(BaseModel):
+    phones: list
+    message: str = ""  # Optional text message with image
+    media_url: str     # URL of the image to send
+
+def send_sms_with_image(message: str, to_number: str, media_url: str):
+    """Send SMS with image attachment"""
+    sid = os.getenv("TWILIO_ACCOUNT_SID")
+    token = os.getenv("TWILIO_AUTH_TOKEN")
+    from_number = os.getenv("TWILIO_PHONE_FROM")
+    
+    if not all([sid, token, from_number, to_number]):
+        return {"error": "Twilio config incomplete."}
+
+    client = Client(sid, token)
+    try:
+        # Prepare message parameters
+        message_params = {
+            "from_": from_number,
+            "to": to_number,
+            "media_url": [media_url]  # Twilio expects a list
+        }
+        
+        # Add text message if provided
+        if message:
+            message_params["body"] = message
+            
+        msg = client.messages.create(**message_params)
+        return {"to": to_number, "status": "sent", "sid": msg.sid}
+    except Exception as e:
+        log_error("send_sms_with_image", e)
+        return {"to": to_number, "error": str(e)}
+
+@app.post("/send-image-sms")
+async def send_image_sms(data: ImageSMSRequest):
+    """Send image SMS to multiple recipients"""
+    results = []
+    for phone in data.phones:
+        try:
+            result = send_sms_with_image(
+                message=data.message,
+                to_number=str(phone),
+                media_url=data.media_url
+            )
+            results.append(result)
+        except Exception as e:
+            log_error("send-image-sms", e)
+            results.append({"to": phone, "error": str(e)})
+    
+    print("Image SMS sent to:", data.phones)
+    return {"results": results}
+
