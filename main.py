@@ -713,39 +713,52 @@ def get_clients(opted_in: bool = None):
 def create_client(client: dict):
     try:
         result = supabase.table("sms_clients").insert(client).execute()
-        if result.error:
-            log_error("create_client", result.error)
-            raise HTTPException(status_code=400, detail=result.error)
-        return result.data[0]
+        # Fix: Check result.data instead of result.error
+        if result.data:
+            return result.data[0]
+        else:
+            log_error("create_client", "No data returned from insert")
+            raise HTTPException(status_code=400, detail="Failed to create client")
     except Exception as e:
         log_error("create_client", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 @api.put("/clients/{client_id}")
-def update_client(client_id: int, update: dict):
-    result = supabase.table("sms_clients").update(update).eq("id", client_id).execute()
-    if result.error:
-        raise HTTPException(status_code=400, detail=result.error)
-    return {"success": True}
+def update_client(client_id: int, update_data: dict):
+    try:
+        result = supabase.table("sms_clients").update(update_data).eq("id", client_id).execute()
+        if result.data:
+            return result.data[0]
+        else:
+            raise HTTPException(status_code=404, detail="Client not found")
+    except Exception as e:
+        log_error("update_client", e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 @api.delete("/clients/{client_id}")
 def delete_client(client_id: int):
-    result = supabase.table("sms_clients").delete().eq("id", client_id).execute()
-    if result.error:
-        raise HTTPException(status_code=400, detail=result.error)
-    return {"success": True}
+    try:
+        result = supabase.table("sms_clients").delete().eq("id", client_id).execute()
+        if result.data:
+            return {"message": "Client deleted successfully"}
+        else:
+            raise HTTPException(status_code=404, detail="Client not found")
+    except Exception as e:
+        log_error("delete_client", e)
+        raise HTTPException(status_code=500, detail=str(e))
 
-@api.get("/farms")
-def get_farms():
-    result = supabase.table("sms_farms").select("*").execute()
-    return result.data or []
-
+# Same pattern for farms
 @api.post("/farms")
 def create_farm(farm: dict):
-    result = supabase.table("sms_farms").insert(farm).execute()
-    if result.error:
-        raise HTTPException(status_code=400, detail=result.error)
-    return result.data[0]
+    try:
+        result = supabase.table("sms_farms").insert(farm).execute()
+        if result.data:
+            return result.data[0]
+        else:
+            raise HTTPException(status_code=400, detail="Failed to create farm")
+    except Exception as e:
+        log_error("create_farm", e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 @api.put("/farms/{farm_id}")
 def update_farm(farm_id: int, update: dict):
