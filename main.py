@@ -747,6 +747,12 @@ def delete_client(client_id: int):
         log_error("delete_client", e)
         raise HTTPException(status_code=500, detail=str(e))
 
+@api.get("/farms")
+def get_farms():
+    result = supabase.table("sms_farms").select("*").execute()
+    return result.data or []
+
+
 # Same pattern for farms
 @api.post("/farms")
 def create_farm(farm: dict):
