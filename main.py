@@ -561,7 +561,7 @@ async def format_operation_sms(operation_data, access_token):
         time_suffix = ""
 
     op_type = operation_data.get("fieldOperationType", "Operation").capitalize()
-    msg = f"{op_type} of {product_name} on {field_name} was completed at {time_formatted} {time_suffix}."
+    msg = f"Application of {field_name} was completed at {time_formatted} {time_suffix}."
 
     return msg, field_name, client_name, farm_name
 
