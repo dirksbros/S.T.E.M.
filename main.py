@@ -16,6 +16,9 @@ from twilio.rest import Client
 from fastapi import APIRouter, HTTPException
 import traceback
 import json
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+import atexit
 
 
 
@@ -381,65 +384,48 @@ async def webhook_listener(request: Request):
                 print(f"📝 Event type: {event_type}")
                 print(f"📍 Resource: {resource_url}")
 
-                # Fetch resource data
                 if resource_url:
                     resource_response = await client.get(resource_url, headers=headers)
                     print("📥 Resource GET Status:", resource_response.status_code)
 
                     if resource_response.status_code == 200:
                         resource_data = resource_response.json()
-                        print("✅ Resource Data:", resource_data)
-
-                        operation_data = resource_response.json()
-                        message, field_name, client_name, farm_name = await format_operation_sms(operation_data, access_token)
+                        message, field_name, client_name, farm_name = await format_operation_sms(resource_data, access_token)
 
                         if not farm_name:
                             farm_name = "Unknown Farm"
-                        print(f"Farm Name: {farm_name}")
 
+                        # Get today's date
+                        from datetime import date
+                        operation_date = date.today()
+
+                        # Find client info
                         farm_lookup = supabase.table("sms_farms").select("client_name").eq("farm_name", farm_name).execute()
                         client_name = None
+                        phone_number = None
+                        
                         if farm_lookup.data and len(farm_lookup.data) == 1:
                             client_name = farm_lookup.data[0]["client_name"]
-                            print(f"✅ Found client_name '{client_name}' for farm_name '{farm_name}'")
-                        else:
-                            print(f"⚠️ No matching farm_name '{farm_name}' in sms_farms table")
-
-                        phone_number = None
-                        if client_name:
                             phone_result = supabase.table("sms_clients").select("phone").eq("client_name", client_name).single().execute()
                             phone_number = phone_result.data.get("phone") if phone_result.data else None
-                            if phone_number:
-                                print(f"✅ Found phone number '{phone_number}' for client_name '{client_name}'")
+
+                        # Store notification (will be ignored if duplicate due to UNIQUE constraint)
+                        try:
+                            supabase.table("pending_notifications").insert({
+                                "field_name": field_name,
+                                "farm_name": farm_name,
+                                "client_name": client_name,
+                                "phone_number": phone_number,
+                                "message": message,
+                                "operation_type": resource_data.get("fieldOperationType", "Operation"),
+                                "operation_date": operation_date.isoformat()
+                            }).execute()
+                            print(f"✅ Stored notification for {field_name} at {farm_name}")
+                        except Exception as e:
+                            if "duplicate key value" in str(e).lower():
+                                print(f"⚠️ Duplicate notification ignored: {field_name} at {farm_name}")
                             else:
-                                print(f"⚠️ No phone number found for client_name '{client_name}'")
-                        # === Send SMS ===
-                        if phone_number:
-                            sms_result = send_sms(message, to_number=phone_number)
-                            first_result = sms_result[0] if sms_result else {}
-                            log_sms_event(
-                                number=phone_number,
-                                content=message,
-                                error=None if first_result.get("status") == "sent" else first_result.get("error")
-                                
-                        )  
-                        else:
-                            error_msg = "No phone number found for farm: " + farm_name
-                            sms_result = {"error": error_msg}
-                            log_sms_event(number="", content=message, error=error_msg)
-
-                            
-
-                        print("📤 SMS Result:", sms_result)
-                        print("📄 Formatted Message:", message)
-                    else:
-                        message = f"JD Event: {event_type}\nResource fetch failed with status {resource_response.status_code}"
-                        log_sms_event(number="", content=message, error=f"Resource fetch failed with status {resource_response.status_code}")
-                else:
-                    message = f"JD Event: {event_type}\nNo resource URL"
-                    log_sms_event(number="", content=message, error="No resource URL")
-
-                print("📄 Message to send:", message)
+                                log_error("store_notification", e)
 
         return Response(status_code=204)
     except Exception as e:
@@ -837,4 +823,131 @@ async def send_image_sms(data: ImageSMSRequest):
     
     print("Image SMS sent to:", data.phones)
     return {"results": results}
+
+from datetime import date, datetime, time
+from zoneinfo import ZoneInfo
+
+async def send_scheduled_notifications():
+    """Send all pending notifications for today"""
+    today = date.today()
+    
+    # Get all unsent notifications for today
+    pending = supabase.table("pending_notifications").select("*").eq("operation_date", today.isoformat()).is_("sent_at", "null").execute()
+    
+    if not pending.data:
+        print("No pending notifications to send")
+        return {"sent": 0, "errors": 0}
+    
+    sent_count = 0
+    error_count = 0
+    
+    for notification in pending.data:
+        phone = notification.get("phone_number")
+        message = notification.get("message")
+        
+        if phone and message:
+            try:
+                # Send SMS
+                sms_result = send_sms(message, to_number=str(phone))
+                first_result = sms_result[0] if sms_result else {}
+                
+                if first_result.get("status") == "sent":
+                    # Mark as sent
+                    supabase.table("pending_notifications").update({
+                        "sent_at": datetime.now().isoformat()
+                    }).eq("id", notification["id"]).execute()
+                    
+                    log_sms_event(
+                        number=str(phone),
+                        content=message,
+                        error=None
+                    )
+                    sent_count += 1
+                    print(f"✅ Sent notification to {phone}")
+                else:
+                    error_msg = first_result.get("error", "Unknown error")
+                    log_sms_event(
+                        number=str(phone),
+                        content=message,
+                        error=error_msg
+                    )
+                    error_count += 1
+                    print(f"❌ Failed to send to {phone}: {error_msg}")
+                    
+            except Exception as e:
+                log_error("send_scheduled_notification", e)
+                error_count += 1
+        else:
+            print(f"⚠️ Skipping notification {notification['id']}: missing phone or message")
+            error_count += 1
+    
+    return {"sent": sent_count, "errors": error_count}
+
+@app.post("/send-scheduled")
+async def trigger_scheduled_send():
+    """Manual trigger for scheduled notifications (for testing)"""
+    result = await send_scheduled_notifications()
+    return result
+
+# Initialize scheduler
+scheduler = AsyncIOScheduler()
+
+# Schedule for 12:00 PM and 5:30 PM Central Time
+scheduler.add_job(
+    send_scheduled_notifications,
+    CronTrigger(hour=12, minute=0, timezone='America/Chicago'),
+    id='noon_notifications',
+    replace_existing=True
+)
+
+scheduler.add_job(
+    send_scheduled_notifications,
+    CronTrigger(hour=17, minute=30, timezone='America/Chicago'),
+    id='evening_notifications',
+    replace_existing=True
+)
+
+# Start scheduler when app starts
+@app.on_event("startup")
+async def startup_event():
+    scheduler.start()
+    print("📅 Scheduler started - notifications will be sent at 12:00 PM and 5:30 PM CT")
+
+# Stop scheduler when app shuts down
+@app.on_event("shutdown")
+async def shutdown_event():
+    scheduler.shutdown()
+
+# Ensure scheduler stops on exit
+atexit.register(lambda: scheduler.shutdown())
+
+@app.get("/pending-notifications")
+async def get_pending_notifications():
+    """Get all pending notifications for today"""
+    today = date.today()
+    pending = supabase.table("pending_notifications").select("*").eq("operation_date", today.isoformat()).execute()
+    return {"notifications": pending.data or [], "count": len(pending.data or [])}
+
+@app.delete("/pending-notifications")
+async def clear_pending_notifications():
+    """Clear all pending notifications (for testing)"""
+    today = date.today()
+    result = supabase.table("pending_notifications").delete().eq("operation_date", today.isoformat()).execute()
+    return {"message": "Pending notifications cleared"}
+
+@app.get("/notification-stats")
+async def get_notification_stats():
+    """Get notification statistics"""
+    today = date.today()
+    
+    total = supabase.table("pending_notifications").select("*", count="exact").eq("operation_date", today.isoformat()).execute()
+    sent = supabase.table("pending_notifications").select("*", count="exact").eq("operation_date", today.isoformat()).not_.is_("sent_at", "null").execute()
+    pending = supabase.table("pending_notifications").select("*", count="exact").eq("operation_date", today.isoformat()).is_("sent_at", "null").execute()
+    
+    return {
+        "date": today.isoformat(),
+        "total": total.count,
+        "sent": sent.count,
+        "pending": pending.count
+    }
 
