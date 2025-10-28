@@ -390,42 +390,70 @@ async def webhook_listener(request: Request):
 
                     if resource_response.status_code == 200:
                         resource_data = resource_response.json()
-                        message, field_name, client_name, farm_name = await format_operation_sms(resource_data, access_token)
-
-                        if not farm_name:
-                            farm_name = "Unknown Farm"
-
-                        # Get today's date
-                        from datetime import date
-                        operation_date = date.today()
-
-                        # Find client info
-                        farm_lookup = supabase.table("sms_farms").select("client_name").eq("farm_name", farm_name).execute()
-                        client_name = None
-                        phone_number = None
                         
-                        if farm_lookup.data and len(farm_lookup.data) == 1:
-                            client_name = farm_lookup.data[0]["client_name"]
-                            phone_result = supabase.table("sms_clients").select("phone").eq("client_name", client_name).single().execute()
-                            phone_number = phone_result.data.get("phone") if phone_result.data else None
+                        # Get field URL from links
+                        field_url = None
+                        for link in resource_data.get("links", []):
+                            if link.get("rel") == "field":
+                                field_url = link.get("uri")
+                                break
+                        
+                        if not field_url:
+                            print("⚠️ No field URL found in operation data")
+                            continue
 
-                        # Store notification (will be ignored if duplicate due to UNIQUE constraint)
-                        try:
-                            supabase.table("pending_notifications").insert({
-                                "field_name": field_name,
-                                "farm_name": farm_name,
-                                "client_name": client_name,
-                                "phone_number": phone_number,
-                                "message": message,
-                                "operation_type": resource_data.get("fieldOperationType", "Operation"),
-                                "operation_date": operation_date.isoformat()
-                            }).execute()
-                            print(f"✅ Stored notification for {field_name} at {farm_name}")
-                        except Exception as e:
-                            if "duplicate key value" in str(e).lower():
-                                print(f"⚠️ Duplicate notification ignored: {field_name} at {farm_name}")
-                            else:
-                                log_error("store_notification", e)
+                        # Get field size and applied area
+                        field_size = await get_field_boundaries(field_url, access_token)
+                        applied_area = await get_application_rate_results(resource_url, access_token)
+                        
+                        if field_size <= 0:
+                            print("⚠️ Could not determine field size")
+                            continue
+                            
+                        # Calculate completion percentage
+                        completion_percentage = (applied_area / field_size) * 100
+                        print(f"📊 Field completion: {completion_percentage:.1f}%")
+                        
+                        # Only proceed if completion >= 70%
+                        if completion_percentage >= 70:
+                            message, field_name, client_name, farm_name = await format_operation_sms(resource_data, access_token)
+
+                            if not farm_name:
+                                farm_name = "Unknown Farm"
+
+                            # Get today's date
+                            operation_date = date.today()
+
+                            # Find client info
+                            farm_lookup = supabase.table("sms_farms").select("client_name").eq("farm_name", farm_name).execute()
+                            client_name = None
+                            phone_number = None
+                            
+                            if farm_lookup.data and len(farm_lookup.data) == 1:
+                                client_name = farm_lookup.data[0]["client_name"]
+                                phone_result = supabase.table("sms_clients").select("phone").eq("client_name", client_name).single().execute()
+                                phone_number = phone_result.data.get("phone") if phone_result.data else None
+
+                            # Store notification
+                            try:
+                                supabase.table("pending_notifications").insert({
+                                    "field_name": field_name,
+                                    "farm_name": farm_name,
+                                    "client_name": client_name,
+                                    "phone_number": phone_number,
+                                    "message": message,
+                                    "operation_type": resource_data.get("fieldOperationType", "Operation"),
+                                    "operation_date": operation_date.isoformat(),
+                                    "completion_percentage": completion_percentage
+                                }).execute()
+                                print(f"✅ Stored notification for {field_name} at {farm_name} ({completion_percentage:.1f}% complete)")
+                            except Exception as e:
+                                if "duplicate key value" in str(e).lower():
+                                    print(f"⚠️ Duplicate notification ignored: {field_name} at {farm_name}")
+                                else:
+                                    log_error("store_notification", e)
+                        else:
+                            print(f"⏳ Field only {completion_percentage:.1f}% complete - notification deferred")
 
         return Response(status_code=204)
     except Exception as e:
@@ -950,4 +978,73 @@ async def get_notification_stats():
         "sent": sent.count,
         "pending": pending.count
     }
+
+async def get_field_boundaries(field_url: str, access_token: str) -> float:
+    """Get field workable area in hectares"""
+    try:
+        # Convert field URL to boundaries URL
+        boundaries_url = f"{field_url}/boundaries"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Accept": "application/vnd.deere.axiom.v3+json"
+        }
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(boundaries_url, headers=headers)
+            if response.status_code == 200:
+                data = response.json()
+                # Get workable area from first boundary
+                if data.get("boundaries") and len(data["boundaries"]) > 0:
+                    workable_area = data["boundaries"][0].get("workableArea", {})
+                    if workable_area and "valueAsDouble" in workable_area:
+                        return workable_area["valueAsDouble"]
+        return 0
+    except Exception as e:
+        log_error("get_field_boundaries", e)
+        return 0
+
+async def get_application_rate_results(operation_url: str, access_token: str) -> float:
+    """Get applied area in hectares from application rate results"""
+    try:
+        # Get the application rate result URL
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Accept": "application/vnd.deere.axiom.v3+json"
+        }
+
+        async with httpx.AsyncClient() as client:
+            # First get the field operation to find rate result link
+            op_response = await client.get(operation_url, headers=headers)
+            if op_response.status_code != 200:
+                return 0
+            
+            op_data = op_response.json()
+            rate_result_url = None
+            
+            # Find application rate result link
+            for link in op_data.get("links", []):
+                if link.get("rel") == "applicationRateResult":
+                    rate_result_url = link.get("uri")
+                    break
+            
+            if not rate_result_url:
+                return 0
+                
+            # Get application rate results
+            rate_response = await client.get(rate_result_url, headers=headers)
+            if rate_response.status_code != 200:
+                return 0
+                
+            rate_data = rate_response.json()
+            
+            # Get applied area from first product total
+            if (rate_data.get("applicationProductTotals") and 
+                len(rate_data["applicationProductTotals"]) > 0):
+                area_data = rate_data["applicationProductTotals"][0].get("area", {})
+                if area_data and "value" in area_data:
+                    return area_data["value"]
+        return 0
+    except Exception as e:
+        log_error("get_application_rate_results", e)
+        return 0
 
