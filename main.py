@@ -982,25 +982,50 @@ async def get_notification_stats():
 async def get_field_boundaries(field_url: str, access_token: str) -> float:
     """Get field workable area in hectares"""
     try:
-        # Convert field URL to boundaries URL
-        boundaries_url = f"{field_url}/boundaries"
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Accept": "application/vnd.deere.axiom.v3+json"
         }
 
         async with httpx.AsyncClient() as client:
-            response = await client.get(boundaries_url, headers=headers)
-            if response.status_code == 200:
-                data = response.json()
-                # Get workable area from first boundary
-                if data.get("boundaries") and len(data["boundaries"]) > 0:
-                    workable_area = data["boundaries"][0].get("workableArea", {})
-                    if workable_area and "valueAsDouble" in workable_area:
-                        return workable_area["valueAsDouble"]
-        return 0
+            # First get the field data
+            field_response = await client.get(field_url, headers=headers)
+            if field_response.status_code != 200:
+                print(f"❌ Field request failed: {field_response.status_code}")
+                return 0
+
+            field_data = field_response.json()
+            active_boundary_link = None
+
+            # Find the activeBoundary link
+            for link in field_data.get("links", []):
+                if link.get("rel") == "activeBoundary":
+                    active_boundary_link = link.get("uri")
+                    break
+
+            if not active_boundary_link:
+                print("❌ No active boundary link found")
+                return 0
+
+            # Get the active boundary data
+            boundary_response = await client.get(active_boundary_link, headers=headers)
+            if boundary_response.status_code != 200:
+                print(f"❌ Boundary request failed: {boundary_response.status_code}")
+                return 0
+
+            boundary_data = boundary_response.json()
+            workable_area = boundary_data.get("workableArea", {})
+            
+            if workable_area and "valueAsDouble" in workable_area:
+                print(f"✅ Found workable area: {workable_area['valueAsDouble']} {workable_area.get('unit', 'ha')}")
+                return workable_area["valueAsDouble"]
+            
+            print("❌ No workable area found in boundary data")
+            return 0
+
     except Exception as e:
         log_error("get_field_boundaries", e)
+        print(f"❌ Error getting field boundaries: {str(e)}")
         return 0
 
 async def get_application_rate_results(operation_url: str, access_token: str) -> float:
